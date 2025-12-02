@@ -1,6 +1,6 @@
 import { VirtualFileSystem } from "./filesystem"
 import { parseCommand } from "./parser"
-import { executeCommand } from "./commands"
+import { executeCommand, CommandContext } from "./commands"
 
 export class TerminalController {
   private filesystem: VirtualFileSystem
@@ -13,6 +13,9 @@ export class TerminalController {
   private outputElement: HTMLElement
   private currentPromptLine: HTMLElement | null = null;
   private maxHistory: number = 100;
+  private startTime: Date = new Date();
+  private envVars: Map<string, string> = new Map();
+  private isExited: boolean = false;
 
   constructor() {
     this.filesystem = new VirtualFileSystem()
@@ -22,15 +25,49 @@ export class TerminalController {
       throw new Error("Terminal output element not found in DOM")
     }
 
+    this.initializeEnvVars()
     this.initialize()
   }
 
+  private initializeEnvVars(): void {
+    this.envVars.set("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
+    this.envVars.set("HOME", "/home/visitor")
+    this.envVars.set("USER", "visitor")
+    this.envVars.set("SHELL", "/bin/bash")
+    this.envVars.set("PWD", this.currentPath)
+    this.envVars.set("TERM", "xterm-256color")
+    this.envVars.set("LANG", "en_US.UTF-8")
+    this.envVars.set("HOSTNAME", "pk2-server")
+  }
+
+  private getCommandContext(): CommandContext {
+    return {
+      commandHistory: this.commandHistory,
+      envVars: this.envVars,
+      startTime: this.startTime,
+      clearHistory: () => {
+        this.commandHistory = [];
+        this.historyIndex = 0;
+      }
+    }
+  }
+
   private initialize(): void {
+    this.showMotd()
     this.showPrompt()
     document.addEventListener("keydown", (e) => this.handleKeyDown(e))
   }
 
+  private showMotd(): void {
+    const motd = this.filesystem.readFile("/etc/motd")
+    if (motd) {
+      this.addOutput(motd.trim(), "info")
+    }
+  }
+
   handleKeyDown(event: KeyboardEvent): void {
+    if (this.isExited) return;
+    
     // Special keys
     if (event.key === "Enter") {
       event.preventDefault()
@@ -119,14 +156,23 @@ export class TerminalController {
       return
     }
 
+    this.envVars.set("PWD", this.currentPath)
+
     const parsed = parseCommand(input)
     const result = executeCommand(
       parsed.command,
       parsed.args,
       parsed.flags,
       this.filesystem,
-      this.currentPath
+      this.currentPath,
+      this.getCommandContext()
     )
+
+    if (result.exit) {
+      this.isExited = true
+      this.addOutput("logout", "info")
+      return
+    }
 
     if (result.error) {
       this.addOutput(result.error, "error")
@@ -140,6 +186,7 @@ export class TerminalController {
 
     if (result.newPath) {
       this.currentPath = result.newPath
+      this.envVars.set("PWD", result.newPath)
     }
   }
 
@@ -158,6 +205,8 @@ export class TerminalController {
   }
 
   private showPrompt(): void {
+    if (this.isExited) return;
+    
     this.currentInput = ""
     this.historyIndex = this.commandHistory.length
 
