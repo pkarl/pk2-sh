@@ -1,3 +1,5 @@
+> note: build/deploy managed via cloudflare connection to this repo
+
 ```txt
 npm install
 npm run dev
