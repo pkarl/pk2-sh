@@ -798,7 +798,6 @@ Have fun exploring!
     const minutes = Math.floor(seconds / 60);
     const hours = Math.floor(minutes / 60);
     const days = Math.floor(hours / 24);
-    const timeStr = `${String(hours % 24).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
     if (days > 0) {
       return `up ${days} day${days > 1 ? "s" : ""}, ${hours % 24}:${String(minutes % 60).padStart(2, "0")}`;
     } else if (hours > 0) {
@@ -1116,12 +1115,16 @@ Type 'man <command>' for more details on specific commands.`;
       return { output: "" };
     },
     history: (args, flags, fs, currentPath, context) => {
+      if (flags["c"]) {
+        context?.clearHistory?.();
+        return { output: "" };
+      }
       if (!context?.commandHistory || context.commandHistory.length === 0) {
         return { output: "" };
       }
       let output = "";
       const history = context.commandHistory;
-      const start = flags["c"] ? 0 : Math.max(0, history.length - 20);
+      const start = Math.max(0, history.length - 20);
       for (let i = start; i < history.length; i++) {
         output += `  ${String(i + 1).padStart(4, " ")}  ${history[i]}
 `;
@@ -1676,7 +1679,7 @@ DESCRIPTION
       return { output: "" };
     },
     false: (args, flags, fs, currentPath) => {
-      return { output: "", error: "" };
+      return { output: "" };
     },
     yes: (args, flags, fs, currentPath) => {
       const text = args.length > 0 ? args.join(" ") : "y";
@@ -1835,7 +1838,9 @@ Note: This is a simulated terminal. Network requests are not supported.` };
       if (args.length === 0) {
         return { error: "wget: missing URL" };
       }
-      return { output: `--2024-12-02 00:00:00--  ${args[0]}
+      const now = /* @__PURE__ */ new Date();
+      const timestamp = now.toISOString().slice(0, 19).replace("T", " ");
+      return { output: `--${timestamp}--  ${args[0]}
 Resolving ${args[0]}... failed: Name or service not known.
 wget: unable to resolve host address '${args[0]}'
 Note: This is a simulated terminal. Network requests are not supported.` };
@@ -2050,19 +2055,19 @@ sda      8:0    0   100G  0 disk
     },
     test: (args, flags, fs, currentPath) => {
       if (args.length === 0) {
-        return { output: "", error: "false" };
+        return { output: "" };
       }
       if (args[0] === "-e" || args[0] === "-f" || args[0] === "-d") {
         if (args.length < 2)
-          return { output: "", error: "false" };
+          return { output: "" };
         const path = fs.resolvePath(currentPath, args[1]);
         const node = fs.getNode(path);
         if (args[0] === "-e")
-          return node ? { output: "" } : { output: "", error: "false" };
+          return { output: "" };
         if (args[0] === "-f")
-          return node?.type === "file" ? { output: "" } : { output: "", error: "false" };
+          return { output: "" };
         if (args[0] === "-d")
-          return node?.type === "directory" ? { output: "" } : { output: "", error: "false" };
+          return { output: "" };
       }
       return { output: "" };
     },
@@ -2484,6 +2489,7 @@ file locks                      (-x) unlimited` };
       __publicField(this, "maxHistory", 100);
       __publicField(this, "startTime", /* @__PURE__ */ new Date());
       __publicField(this, "envVars", /* @__PURE__ */ new Map());
+      __publicField(this, "isExited", false);
       this.filesystem = new VirtualFileSystem();
       this.outputElement = document.getElementById("terminal-output");
       if (!this.outputElement) {
@@ -2506,7 +2512,11 @@ file locks                      (-x) unlimited` };
       return {
         commandHistory: this.commandHistory,
         envVars: this.envVars,
-        startTime: this.startTime
+        startTime: this.startTime,
+        clearHistory: () => {
+          this.commandHistory = [];
+          this.historyIndex = 0;
+        }
       };
     }
     initialize() {
@@ -2521,6 +2531,8 @@ file locks                      (-x) unlimited` };
       }
     }
     handleKeyDown(event) {
+      if (this.isExited)
+        return;
       if (event.key === "Enter") {
         event.preventDefault();
         this.handleEnter();
@@ -2609,6 +2621,7 @@ file locks                      (-x) unlimited` };
         this.getCommandContext()
       );
       if (result.exit) {
+        this.isExited = true;
         this.addOutput("logout", "info");
         return;
       }
@@ -2637,6 +2650,8 @@ file locks                      (-x) unlimited` };
       this.outputElement.innerHTML = "";
     }
     showPrompt() {
+      if (this.isExited)
+        return;
       this.currentInput = "";
       this.historyIndex = this.commandHistory.length;
       if (this.currentPromptLine) {

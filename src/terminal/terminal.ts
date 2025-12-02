@@ -15,6 +15,7 @@ export class TerminalController {
   private maxHistory: number = 100;
   private startTime: Date = new Date();
   private envVars: Map<string, string> = new Map();
+  private isExited: boolean = false;
 
   constructor() {
     this.filesystem = new VirtualFileSystem()
@@ -43,7 +44,11 @@ export class TerminalController {
     return {
       commandHistory: this.commandHistory,
       envVars: this.envVars,
-      startTime: this.startTime
+      startTime: this.startTime,
+      clearHistory: () => {
+        this.commandHistory = [];
+        this.historyIndex = 0;
+      }
     }
   }
 
@@ -61,6 +66,8 @@ export class TerminalController {
   }
 
   handleKeyDown(event: KeyboardEvent): void {
+    if (this.isExited) return;
+    
     // Special keys
     if (event.key === "Enter") {
       event.preventDefault()
@@ -162,6 +169,7 @@ export class TerminalController {
     )
 
     if (result.exit) {
+      this.isExited = true
       this.addOutput("logout", "info")
       return
     }
@@ -197,6 +205,8 @@ export class TerminalController {
   }
 
   private showPrompt(): void {
+    if (this.isExited) return;
+    
     this.currentInput = ""
     this.historyIndex = this.commandHistory.length
 

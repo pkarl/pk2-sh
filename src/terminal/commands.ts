@@ -19,6 +19,7 @@ export interface CommandContext {
   commandHistory: string[];
   envVars: Map<string, string>;
   startTime: Date;
+  clearHistory?: () => void;
 }
 
 function padRight(str: string, width: number): string {
@@ -84,8 +85,6 @@ function formatUptime(startTime: Date): string {
   const minutes = Math.floor(seconds / 60);
   const hours = Math.floor(minutes / 60);
   const days = Math.floor(hours / 24);
-  
-  const timeStr = `${String(hours % 24).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
   
   if (days > 0) {
     return `up ${days} day${days > 1 ? "s" : ""}, ${hours % 24}:${String(minutes % 60).padStart(2, "0")}`;
@@ -449,12 +448,16 @@ Type 'man <command>' for more details on specific commands.`;
   },
 
   history: (args, flags, fs, currentPath, context) => {
+    if (flags["c"]) {
+      context?.clearHistory?.();
+      return { output: "" };
+    }
     if (!context?.commandHistory || context.commandHistory.length === 0) {
       return { output: "" };
     }
     let output = "";
     const history = context.commandHistory;
-    const start = flags["c"] ? 0 : Math.max(0, history.length - 20);
+    const start = Math.max(0, history.length - 20);
     for (let i = start; i < history.length; i++) {
       output += `  ${String(i + 1).padStart(4, " ")}  ${history[i]}\n`;
     }
@@ -1094,7 +1097,7 @@ Change: ${formatFullDate(node.modified)}
   },
 
   false: (args, flags, fs, currentPath) => {
-    return { output: "", error: "" };
+    return { output: "" };
   },
 
   yes: (args, flags, fs, currentPath) => {
@@ -1272,7 +1275,9 @@ Note: This is a simulated terminal. Network requests are not supported.` };
     if (args.length === 0) {
       return { error: "wget: missing URL" };
     }
-    return { output: `--2024-12-02 00:00:00--  ${args[0]}
+    const now = new Date();
+    const timestamp = now.toISOString().slice(0, 19).replace("T", " ");
+    return { output: `--${timestamp}--  ${args[0]}
 Resolving ${args[0]}... failed: Name or service not known.
 wget: unable to resolve host address '${args[0]}'
 Note: This is a simulated terminal. Network requests are not supported.` };
@@ -1530,16 +1535,16 @@ sda      8:0    0   100G  0 disk
 
   test: (args, flags, fs, currentPath) => {
     if (args.length === 0) {
-      return { output: "", error: "false" };
+      return { output: "" };
     }
     
     if (args[0] === "-e" || args[0] === "-f" || args[0] === "-d") {
-      if (args.length < 2) return { output: "", error: "false" };
+      if (args.length < 2) return { output: "" };
       const path = fs.resolvePath(currentPath, args[1]);
       const node = fs.getNode(path);
-      if (args[0] === "-e") return node ? { output: "" } : { output: "", error: "false" };
-      if (args[0] === "-f") return node?.type === "file" ? { output: "" } : { output: "", error: "false" };
-      if (args[0] === "-d") return node?.type === "directory" ? { output: "" } : { output: "", error: "false" };
+      if (args[0] === "-e") return { output: "" };
+      if (args[0] === "-f") return { output: "" };
+      if (args[0] === "-d") return { output: "" };
     }
     
     return { output: "" };
