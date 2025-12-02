@@ -14,6 +14,15 @@ const terminalHTML = html`<!DOCTYPE html>
   <body>
     <div id="terminal-container">
       <div id="terminal-output"></div>
+      <input
+        type="text"
+        id="mobile-input"
+        autocomplete="off"
+        autocorrect="off"
+        autocapitalize="off"
+        spellcheck="false"
+        aria-label="Terminal input"
+      />
     </div>
     <script defer src="/terminal.js"></script>
   </body>

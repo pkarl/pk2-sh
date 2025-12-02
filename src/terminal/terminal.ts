@@ -11,6 +11,7 @@ export class TerminalController {
   private multilineMode: boolean = false;
   private multilineBuffer: string[] = [];
   private outputElement: HTMLElement
+  private mobileInput: HTMLInputElement | null = null
   private currentPromptLine: HTMLElement | null = null;
   private maxHistory: number = 100;
   private startTime: Date = new Date();
@@ -56,6 +57,67 @@ export class TerminalController {
     this.showMotd()
     this.showPrompt()
     document.addEventListener("keydown", (e) => this.handleKeyDown(e))
+    
+    // Set up mobile input for virtual keyboard support
+    this.mobileInput = document.getElementById("mobile-input") as HTMLInputElement
+    if (this.mobileInput) {
+      this.setupMobileInput()
+    }
+  }
+
+  private setupMobileInput(): void {
+    if (!this.mobileInput) return
+
+    // Focus the hidden input when terminal is tapped
+    const container = document.getElementById("terminal-container")
+    if (container) {
+      container.addEventListener("click", () => this.focusMobileInput())
+      container.addEventListener("touchstart", () => this.focusMobileInput())
+    }
+
+    // Handle input events from mobile keyboard
+    this.mobileInput.addEventListener("input", (e) => this.handleMobileInput(e as InputEvent))
+    
+    // Handle special keys on mobile (Enter, Backspace)
+    this.mobileInput.addEventListener("keydown", (e) => this.handleMobileKeyDown(e))
+  }
+
+  private focusMobileInput(): void {
+    if (this.mobileInput && !this.isExited) {
+      this.mobileInput.focus()
+    }
+  }
+
+  private handleMobileInput(event: InputEvent): void {
+    if (this.isExited || !this.mobileInput) return
+
+    const inputType = event.inputType
+    const data = event.data
+
+    if (inputType === "insertText" && data) {
+      // Regular character input
+      this.currentInput += data
+      this.updateInputDisplay()
+    } else if (inputType === "deleteContentBackward") {
+      // Backspace
+      this.currentInput = this.currentInput.slice(0, -1)
+      this.updateInputDisplay()
+    }
+
+    // Clear the mobile input to keep it ready for next input
+    this.mobileInput.value = ""
+  }
+
+  private handleMobileKeyDown(event: KeyboardEvent): void {
+    if (this.isExited) return
+
+    if (event.key === "Enter") {
+      event.preventDefault()
+      this.handleEnter()
+      if (this.mobileInput) {
+        this.mobileInput.value = ""
+      }
+    }
   }
 
   private showMotd(): void {
