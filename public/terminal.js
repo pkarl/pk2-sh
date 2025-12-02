@@ -2579,6 +2579,9 @@ file locks                      (-x) unlimited` };
     handleKeyDown(event) {
       if (this.isExited)
         return;
+      if (this.mobileInput && event.target === this.mobileInput) {
+        return;
+      }
       if (event.key === "Enter") {
         event.preventDefault();
         this.handleEnter();

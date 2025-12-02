@@ -130,6 +130,11 @@ export class TerminalController {
   handleKeyDown(event: KeyboardEvent): void {
     if (this.isExited) return;
     
+    // Skip events from mobile input - they're handled by handleMobileKeyDown
+    if (this.mobileInput && event.target === this.mobileInput) {
+      return;
+    }
+    
     // Special keys
     if (event.key === "Enter") {
       event.preventDefault()
