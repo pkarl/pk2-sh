@@ -1128,6 +1128,13 @@ Lived in:
       let output = "";
       for (const arg of args) {
         const fullPath = fs.resolvePath(currentPath, arg);
+        const node = fs.getNode(fullPath);
+        if (!node) {
+          return { error: `cat: ${arg}: No such file or directory` };
+        }
+        if (node.type === "directory") {
+          return { error: `cat: ${arg}: Is a directory` };
+        }
         const content = fs.readFile(fullPath);
         if (content === null) {
           return { error: `cat: ${arg}: No such file or directory` };
@@ -2779,6 +2786,12 @@ file locks                      (-x) unlimited` };
       __publicField(this, "envVars", /* @__PURE__ */ new Map());
       __publicField(this, "isExited", false);
       __publicField(this, "faviconManager");
+      __publicField(this, "tabCompletionState", {
+        candidates: [],
+        currentIndex: -1,
+        originalInput: "",
+        isActive: false
+      });
       this.filesystem = new VirtualFileSystem();
       this.outputElement = document.getElementById("terminal-output");
       this.faviconManager = new FaviconManager();
@@ -2864,6 +2877,13 @@ file locks                      (-x) unlimited` };
         if (this.mobileInput) {
           this.mobileInput.value = "";
         }
+      } else if (event.key === "Tab") {
+        event.preventDefault();
+        event.stopPropagation();
+        this.handleTabCompletion();
+        if (this.mobileInput) {
+          this.mobileInput.value = "";
+        }
       }
     }
     showMotd() {
@@ -2877,6 +2897,7 @@ file locks                      (-x) unlimited` };
       this.addOutput("", "info");
     }
     handleKeyDown(event) {
+      console.log('keydown', event.key);
       if (this.isExited)
         return;
       if (this.mobileInput && event.target === this.mobileInput) {
@@ -2891,10 +2912,15 @@ file locks                      (-x) unlimited` };
       } else if (event.key === "ArrowDown") {
         event.preventDefault();
         this.navigateHistory("down");
+      } else if (event.key === "Tab") {
+        event.preventDefault();
+        event.stopPropagation();
+        this.handleTabCompletion();
       } else if (event.key === "Backspace" || event.key === "Delete") {
         event.preventDefault();
         this.currentInput = this.currentInput.slice(0, -1);
         this.updateInputDisplay();
+        this.resetTabCompletion();
       } else if (event.key === "Control" || event.key === "Ctrl") {
       } else if (event.ctrlKey && event.key === "c") {
         event.preventDefault();
@@ -2903,10 +2929,15 @@ file locks                      (-x) unlimited` };
         event.preventDefault();
         this.clearOutput();
         this.showPrompt();
+      } else if (event.ctrlKey && event.key === "w") {
+        event.preventDefault();
+        this.deleteWord();
+        this.resetTabCompletion();
       } else if (event.key.length === 1 && !event.ctrlKey && !event.metaKey) {
         event.preventDefault();
         this.currentInput += event.key;
         this.updateInputDisplay();
+        this.resetTabCompletion();
       }
     }
     async handleEnter() {
@@ -2941,6 +2972,7 @@ file locks                      (-x) unlimited` };
           this.showPrompt();
         }
       }
+      this.resetTabCompletion();
     }
     handleCtrlC() {
       if (this.multilineMode) {
@@ -3099,6 +3131,114 @@ file locks                      (-x) unlimited` };
         this.commandHistory.shift();
       }
       this.historyIndex = this.commandHistory.length;
+    }
+    deleteWord() {
+      let endIndex = this.currentInput.length;
+      while (endIndex > 0 && this.currentInput[endIndex - 1] === " ") {
+        endIndex--;
+      }
+      let startIndex = endIndex;
+      while (startIndex > 0 && this.currentInput[startIndex - 1] !== " ") {
+        startIndex--;
+      }
+      this.currentInput = this.currentInput.slice(0, startIndex) + this.currentInput.slice(endIndex);
+      this.updateInputDisplay();
+    }
+    resetTabCompletion() {
+      this.tabCompletionState = {
+        candidates: [],
+        currentIndex: -1,
+        originalInput: "",
+        isActive: false
+      };
+    }
+    parseCompletionContext(input) {
+      const trimmedInput = input.trim();
+      const lastSpaceIndex = trimmedInput.lastIndexOf(" ");
+      if (lastSpaceIndex === -1) {
+        return {
+          type: "command",
+          prefix: trimmedInput,
+          beforePrefix: "",
+          pathDir: ""
+        };
+      }
+      const beforeLastWord = trimmedInput.substring(0, lastSpaceIndex + 1);
+      const lastWord = trimmedInput.substring(lastSpaceIndex + 1);
+      const lastSlashIndex = lastWord.lastIndexOf("/");
+      let pathDir = "";
+      let prefix = "";
+      if (lastSlashIndex === -1) {
+        pathDir = "";
+        prefix = lastWord;
+      } else {
+        pathDir = lastWord.substring(0, lastSlashIndex + 1);
+        prefix = lastWord.substring(lastSlashIndex + 1);
+      }
+      return {
+        type: "path",
+        prefix,
+        beforePrefix: beforeLastWord + pathDir,
+        pathDir
+      };
+    }
+    getCompletionCandidates(context) {
+      if (context.type === "command") {
+        const allCommands = Object.keys(commands);
+        const candidates = allCommands.filter((name) => name.startsWith(context.prefix)).sort();
+        return candidates;
+      } else {
+        let searchDir = context.pathDir || "";
+        const resolvedDir = this.filesystem.resolvePath(this.currentPath, searchDir || ".");
+        const entries = this.filesystem.listDirectory(resolvedDir);
+        const candidates = entries.filter(
+          (node) => node.name !== "." && node.name !== ".." && node.name.startsWith(context.prefix)
+        ).filter((node) => {
+          if (node.name.startsWith(".") && !context.prefix.startsWith(".")) {
+            return false;
+          }
+          return true;
+        }).map((node) => node.name).sort((a, b) => a.localeCompare(b));
+        return candidates;
+      }
+    }
+    applyCompletion(candidate, context) {
+      let newInput = "";
+      if (context.type === "command") {
+        newInput = candidate;
+      } else {
+        newInput = context.beforePrefix + candidate;
+      }
+      this.currentInput = newInput;
+      this.updateInputDisplay();
+    }
+    handleTabCompletion() {
+      if (this.tabCompletionState.isActive && this.currentInput !== this.tabCompletionState.originalInput) {
+        const candidates2 = this.tabCompletionState.candidates;
+        if (candidates2.length === 0)
+          return;
+        this.tabCompletionState.currentIndex = (this.tabCompletionState.currentIndex + 1) % candidates2.length;
+        const nextCandidate = candidates2[this.tabCompletionState.currentIndex];
+        const context2 = this.parseCompletionContext(
+          this.tabCompletionState.originalInput
+        );
+        this.applyCompletion(nextCandidate, context2);
+        return;
+      }
+      const context = this.parseCompletionContext(this.currentInput);
+      const candidates = this.getCompletionCandidates(context);
+      if (candidates.length === 0) {
+        return;
+      }
+      if (candidates.length === 1) {
+        this.applyCompletion(candidates[0], context);
+        return;
+      }
+      this.tabCompletionState.candidates = candidates;
+      this.tabCompletionState.currentIndex = 0;
+      this.tabCompletionState.originalInput = this.currentInput;
+      this.tabCompletionState.isActive = true;
+      this.applyCompletion(candidates[0], context);
     }
   };
 

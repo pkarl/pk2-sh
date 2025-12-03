@@ -218,6 +218,16 @@ export const commands: Record<string, CommandHandler> = {
     let output = "";
     for (const arg of args) {
       const fullPath = fs.resolvePath(currentPath, arg);
+      const node = fs.getNode(fullPath);
+
+      if (!node) {
+        return { error: `cat: ${arg}: No such file or directory` };
+      }
+
+      if (node.type === "directory") {
+        return { error: `cat: ${arg}: Is a directory` };
+      }
+
       const content = fs.readFile(fullPath);
       if (content === null) {
         return { error: `cat: ${arg}: No such file or directory` };

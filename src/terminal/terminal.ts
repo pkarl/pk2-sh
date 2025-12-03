@@ -1,6 +1,6 @@
 import { VirtualFileSystem } from "./filesystem"
 import { parseCommand, parseCommandChain } from "./parser"
-import { executeCommand, CommandContext, CommandResult } from "./commands"
+import { executeCommand, CommandContext, CommandResult, commands } from "./commands"
 import { FaviconManager } from "./faviconManager"
 
 export class TerminalController {
@@ -19,6 +19,17 @@ export class TerminalController {
   private envVars: Map<string, string> = new Map();
   private isExited: boolean = false;
   private faviconManager: FaviconManager
+  private tabCompletionState: {
+    candidates: string[];
+    currentIndex: number;
+    originalInput: string;
+    isActive: boolean;
+  } = {
+    candidates: [],
+    currentIndex: -1,
+    originalInput: "",
+    isActive: false,
+  };
 
   constructor() {
     this.filesystem = new VirtualFileSystem()
@@ -127,6 +138,13 @@ export class TerminalController {
       if (this.mobileInput) {
         this.mobileInput.value = ""
       }
+    } else if (event.key === "Tab") {
+      event.preventDefault()
+      event.stopPropagation()
+      this.handleTabCompletion()
+      if (this.mobileInput) {
+        this.mobileInput.value = ""
+      }
     }
   }
 
@@ -161,10 +179,15 @@ export class TerminalController {
     } else if (event.key === "ArrowDown") {
       event.preventDefault()
       this.navigateHistory("down")
+    } else if (event.key === "Tab") {
+      event.preventDefault()
+      event.stopPropagation()
+      this.handleTabCompletion()
     } else if (event.key === "Backspace" || event.key === "Delete") {
       event.preventDefault()
       this.currentInput = this.currentInput.slice(0, -1)
       this.updateInputDisplay()
+      this.resetTabCompletion()
     } else if (event.key === "Control" || event.key === "Ctrl") {
       // Don't handle control key alone
     } else if (event.ctrlKey && event.key === "c") {
@@ -174,11 +197,16 @@ export class TerminalController {
       event.preventDefault()
       this.clearOutput()
       this.showPrompt()
+    } else if (event.ctrlKey && event.key === "w") {
+      event.preventDefault()
+      this.deleteWord()
+      this.resetTabCompletion()
     } else if (event.key.length === 1 && !event.ctrlKey && !event.metaKey) {
       // Regular character input
       event.preventDefault()
       this.currentInput += event.key
       this.updateInputDisplay()
+      this.resetTabCompletion()
     }
   }
 
@@ -218,6 +246,7 @@ export class TerminalController {
         this.showPrompt()
       }
     }
+    this.resetTabCompletion()
   }
 
   private handleCtrlC(): void {
@@ -415,5 +444,187 @@ export class TerminalController {
       this.commandHistory.shift()
     }
     this.historyIndex = this.commandHistory.length
+  }
+
+  private deleteWord(): void {
+    // Delete the word before the cursor (Ctrl+W behavior)
+    // Find the end of the current input
+    let endIndex = this.currentInput.length
+
+    // Skip any trailing spaces
+    while (endIndex > 0 && this.currentInput[endIndex - 1] === " ") {
+      endIndex--
+    }
+
+    // Find the start of the word by looking backwards for a space
+    let startIndex = endIndex
+    while (startIndex > 0 && this.currentInput[startIndex - 1] !== " ") {
+      startIndex--
+    }
+
+    // Delete the word
+    this.currentInput = this.currentInput.slice(0, startIndex) + this.currentInput.slice(endIndex)
+    this.updateInputDisplay()
+  }
+
+  private resetTabCompletion(): void {
+    this.tabCompletionState = {
+      candidates: [],
+      currentIndex: -1,
+      originalInput: "",
+      isActive: false,
+    }
+  }
+
+  private parseCompletionContext(input: string): {
+    type: "command" | "path"
+    prefix: string
+    beforePrefix: string
+    pathDir: string
+  } {
+    // Check if we're completing a command or a path
+    const trimmedInput = input.trim()
+    const lastSpaceIndex = trimmedInput.lastIndexOf(" ")
+
+    if (lastSpaceIndex === -1) {
+      // No spaces - completing command
+      return {
+        type: "command",
+        prefix: trimmedInput,
+        beforePrefix: "",
+        pathDir: "",
+      }
+    }
+
+    // Has spaces - completing path argument
+    const beforeLastWord = trimmedInput.substring(0, lastSpaceIndex + 1)
+    const lastWord = trimmedInput.substring(lastSpaceIndex + 1)
+
+    // Parse path: split into directory and filename parts
+    const lastSlashIndex = lastWord.lastIndexOf("/")
+    let pathDir = ""
+    let prefix = ""
+
+    if (lastSlashIndex === -1) {
+      // No slashes in last word - complete in current directory
+      pathDir = ""
+      prefix = lastWord
+    } else {
+      // Has slashes - complete in subdirectory
+      pathDir = lastWord.substring(0, lastSlashIndex + 1)
+      prefix = lastWord.substring(lastSlashIndex + 1)
+    }
+
+    return {
+      type: "path",
+      prefix,
+      beforePrefix: beforeLastWord + pathDir,
+      pathDir,
+    }
+  }
+
+  private getCompletionCandidates(context: {
+    type: "command" | "path"
+    prefix: string
+    beforePrefix: string
+    pathDir: string
+  }): string[] {
+    if (context.type === "command") {
+      // Get command names
+      const allCommands = Object.keys(commands)
+      const candidates = allCommands
+        .filter((name) => name.startsWith(context.prefix))
+        .sort()
+      return candidates
+    } else {
+      // Get file/directory contents
+      let searchDir = context.pathDir || ""
+
+      // Resolve the directory path
+      const resolvedDir = this.filesystem.resolvePath(this.currentPath, searchDir || ".")
+
+      // List directory contents
+      const entries = this.filesystem.listDirectory(resolvedDir)
+
+      // Filter by prefix, exclude . and .., apply directory slash convention
+      const candidates = entries
+        .filter(
+          (node) =>
+            node.name !== "." &&
+            node.name !== ".." &&
+            node.name.startsWith(context.prefix)
+        )
+        .filter((node) => {
+          // Hide hidden files unless prefix starts with .
+          if (node.name.startsWith(".") && !context.prefix.startsWith(".")) {
+            return false
+          }
+          return true
+        })
+        .map((node) => node.name)
+        .sort((a, b) => a.localeCompare(b))
+
+      return candidates
+    }
+  }
+
+  private applyCompletion(candidate: string, context: any): void {
+    let newInput = ""
+
+    if (context.type === "command") {
+      newInput = candidate
+    } else {
+      newInput = context.beforePrefix + candidate
+    }
+
+    this.currentInput = newInput
+    this.updateInputDisplay()
+  }
+
+  private handleTabCompletion(): void {
+    // Check if we're repeating Tab (cycling through candidates)
+    if (
+      this.tabCompletionState.isActive &&
+      this.currentInput !== this.tabCompletionState.originalInput
+    ) {
+      // We're in cycling mode
+      const candidates = this.tabCompletionState.candidates
+      if (candidates.length === 0) return
+
+      // Move to next candidate
+      this.tabCompletionState.currentIndex =
+        (this.tabCompletionState.currentIndex + 1) % candidates.length
+      const nextCandidate = candidates[this.tabCompletionState.currentIndex]
+
+      // Re-parse context to get beforePrefix for path completion
+      const context = this.parseCompletionContext(
+        this.tabCompletionState.originalInput
+      )
+      this.applyCompletion(nextCandidate, context)
+      return
+    }
+
+    // New tab completion
+    const context = this.parseCompletionContext(this.currentInput)
+    const candidates = this.getCompletionCandidates(context)
+
+    if (candidates.length === 0) {
+      // No matches - do nothing
+      return
+    }
+
+    if (candidates.length === 1) {
+      // Single match - apply immediately without cycling
+      this.applyCompletion(candidates[0], context)
+      return
+    }
+
+    // Multiple matches - show first and enable cycling
+    this.tabCompletionState.candidates = candidates
+    this.tabCompletionState.currentIndex = 0
+    this.tabCompletionState.originalInput = this.currentInput
+    this.tabCompletionState.isActive = true
+
+    this.applyCompletion(candidates[0], context)
   }
 }
