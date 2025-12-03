@@ -263,6 +263,10 @@ export class TerminalController {
     if (result.exit) {
       this.isExited = true
       this.addOutput("logout", "info")
+      // Close window after brief delay
+      setTimeout(() => {
+        window.close()
+      }, 500)
       return result
     }
 

@@ -2979,6 +2979,9 @@ file locks                      (-x) unlimited` };
       if (result.exit) {
         this.isExited = true;
         this.addOutput("logout", "info");
+        setTimeout(() => {
+          window.close();
+        }, 500);
         return result;
       }
       if (result.error) {
