@@ -4,6 +4,11 @@ export interface ParsedCommand {
   flags: Record<string, boolean | string>;
 }
 
+export interface CommandChain {
+  commands: ParsedCommand[];
+  operators: ("&&" | "||" | ";")[];
+}
+
 export function parseCommand(input: string): ParsedCommand {
   const trimmed = input.trim();
   if (!trimmed) {
@@ -48,6 +53,101 @@ export function parseCommand(input: string): ParsedCommand {
   }
 
   return { command, args, flags };
+}
+
+export function parseCommandChain(input: string): CommandChain {
+  const trimmed = input.trim();
+
+  // If no operators, return single command
+  if (!containsOperatorOutsideQuotes(trimmed)) {
+    const parsed = parseCommand(trimmed);
+    return {
+      commands: [parsed],
+      operators: [],
+    };
+  }
+
+  const commands: ParsedCommand[] = [];
+  const operators: ("&&" | "||" | ";")[] = [];
+  let current = "";
+  let inQuotes = false;
+  let quoteChar = "";
+
+  for (let i = 0; i < trimmed.length; i++) {
+    const char = trimmed[i];
+    const nextChar = trimmed[i + 1];
+
+    // Handle quotes
+    if (!inQuotes && (char === '"' || char === "'")) {
+      inQuotes = true;
+      quoteChar = char;
+      current += char;
+    } else if (inQuotes && char === quoteChar) {
+      inQuotes = false;
+      quoteChar = "";
+      current += char;
+    } else if (!inQuotes && char === "&" && nextChar === "&") {
+      // Found &&
+      const cmd = current.trim();
+      if (cmd) {
+        commands.push(parseCommand(cmd));
+        operators.push("&&");
+      }
+      current = "";
+      i++; // Skip next &
+    } else if (!inQuotes && char === "|" && nextChar === "|") {
+      // Found ||
+      const cmd = current.trim();
+      if (cmd) {
+        commands.push(parseCommand(cmd));
+        operators.push("||");
+      }
+      current = "";
+      i++; // Skip next |
+    } else if (!inQuotes && char === ";") {
+      // Found ;
+      const cmd = current.trim();
+      if (cmd) {
+        commands.push(parseCommand(cmd));
+        operators.push(";");
+      }
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+
+  // Add final command
+  const cmd = current.trim();
+  if (cmd) {
+    commands.push(parseCommand(cmd));
+  }
+
+  return { commands, operators };
+}
+
+function containsOperatorOutsideQuotes(input: string): boolean {
+  let inQuotes = false;
+  let quoteChar = "";
+
+  for (let i = 0; i < input.length; i++) {
+    const char = input[i];
+    const nextChar = input[i + 1];
+
+    if (!inQuotes && (char === '"' || char === "'")) {
+      inQuotes = true;
+      quoteChar = char;
+    } else if (inQuotes && char === quoteChar) {
+      inQuotes = false;
+      quoteChar = "";
+    } else if (!inQuotes) {
+      if ((char === "&" && nextChar === "&") || (char === "|" && nextChar === "|") || char === ";") {
+        return true;
+      }
+    }
+  }
+
+  return false;
 }
 
 function tokenize(input: string): string[] {

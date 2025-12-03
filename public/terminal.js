@@ -231,16 +231,14 @@ DISTRIB_CODENAME=jammy
 DISTRIB_DESCRIPTION="Ubuntu 22.04.3 LTS"
 `);
       this.createFile("/etc/motd", `
- /$$$$$$$  /$$        /$$$$$$                /$$      
-| $$__  $$| $$       /$$__  $$              | $$      
-| $$  \\ $$| $$   /$$|__/  \\ $$      /$$$$$$$| $$$$$$$ 
+ /$$$$$$$  /$$        /$$$$$$                /$$
+| $$__  $$| $$       /$$__  $$              | $$
+| $$  \\ $$| $$   /$$|__/  \\ $$      /$$$$$$$| $$$$$$$
 | $$$$$$$/| $$  /$$/  /$$$$$$/     /$$_____/| $$__  $$
 | $$____/ | $$$$$$/  /$$____/     |  $$$$$$ | $$  \\ $$
 | $$      | $$_  $$ | $$           \\____  $$| $$  | $$
 | $$      | $$ \\  $$| $$$$$$$$ /$$| /$$$$$$$/| $$  | $$
 |__/      |__/  \\__/|________/|__/|_______/ |__/  |__/
-
-  Type 'help' for available commands.
 
 `);
       this.createFile("/etc/issue", `Ubuntu 22.04.3 LTS \\n \\l
@@ -859,6 +857,84 @@ Lived in:
       }
     }
     return { command, args, flags };
+  }
+  function parseCommandChain(input) {
+    const trimmed = input.trim();
+    if (!containsOperatorOutsideQuotes(trimmed)) {
+      const parsed = parseCommand(trimmed);
+      return {
+        commands: [parsed],
+        operators: []
+      };
+    }
+    const commands2 = [];
+    const operators = [];
+    let current = "";
+    let inQuotes = false;
+    let quoteChar = "";
+    for (let i = 0; i < trimmed.length; i++) {
+      const char = trimmed[i];
+      const nextChar = trimmed[i + 1];
+      if (!inQuotes && (char === '"' || char === "'")) {
+        inQuotes = true;
+        quoteChar = char;
+        current += char;
+      } else if (inQuotes && char === quoteChar) {
+        inQuotes = false;
+        quoteChar = "";
+        current += char;
+      } else if (!inQuotes && char === "&" && nextChar === "&") {
+        const cmd2 = current.trim();
+        if (cmd2) {
+          commands2.push(parseCommand(cmd2));
+          operators.push("&&");
+        }
+        current = "";
+        i++;
+      } else if (!inQuotes && char === "|" && nextChar === "|") {
+        const cmd2 = current.trim();
+        if (cmd2) {
+          commands2.push(parseCommand(cmd2));
+          operators.push("||");
+        }
+        current = "";
+        i++;
+      } else if (!inQuotes && char === ";") {
+        const cmd2 = current.trim();
+        if (cmd2) {
+          commands2.push(parseCommand(cmd2));
+          operators.push(";");
+        }
+        current = "";
+      } else {
+        current += char;
+      }
+    }
+    const cmd = current.trim();
+    if (cmd) {
+      commands2.push(parseCommand(cmd));
+    }
+    return { commands: commands2, operators };
+  }
+  function containsOperatorOutsideQuotes(input) {
+    let inQuotes = false;
+    let quoteChar = "";
+    for (let i = 0; i < input.length; i++) {
+      const char = input[i];
+      const nextChar = input[i + 1];
+      if (!inQuotes && (char === '"' || char === "'")) {
+        inQuotes = true;
+        quoteChar = char;
+      } else if (inQuotes && char === quoteChar) {
+        inQuotes = false;
+        quoteChar = "";
+      } else if (!inQuotes) {
+        if (char === "&" && nextChar === "&" || char === "|" && nextChar === "|" || char === ";") {
+          return true;
+        }
+      }
+    }
+    return false;
   }
   function tokenize(input) {
     const tokens = [];
@@ -1843,7 +1919,18 @@ DESCRIPTION
       return { output: output.trimEnd() };
     },
     sleep: (args, flags, fs, currentPath) => {
-      return { output: "" };
+      const seconds = parseFloat(args[0] || "0");
+      if (isNaN(seconds) || seconds < 0) {
+        return { error: "sleep: invalid time interval" };
+      }
+      if (seconds === 0) {
+        return { output: "" };
+      }
+      return new Promise((resolve) => {
+        setTimeout(() => {
+          resolve({ output: "" });
+        }, seconds * 1e3);
+      });
     },
     tty: (args, flags, fs, currentPath) => {
       return { output: "/dev/pts/0" };
@@ -2627,6 +2714,53 @@ file locks                      (-x) unlimited` };
     return handler(args, flags, fs, currentPath, context);
   }
 
+  // src/terminal/faviconManager.ts
+  var FaviconManager = class {
+    constructor() {
+      __publicField(this, "isFocused", true);
+      __publicField(this, "hasUnseenUpdates", false);
+      __publicField(this, "faviconElement", null);
+      this.initFavicon();
+      this.setupFocusListeners();
+    }
+    initFavicon() {
+      let favicon = document.querySelector('link[rel="icon"]');
+      if (!favicon) {
+        favicon = document.createElement("link");
+        favicon.rel = "icon";
+        favicon.type = "image/png";
+        document.head.appendChild(favicon);
+      }
+      this.faviconElement = favicon;
+      this.updateFavicon();
+    }
+    setupFocusListeners() {
+      window.addEventListener("focus", () => {
+        this.isFocused = true;
+        this.hasUnseenUpdates = false;
+        this.updateFavicon();
+      });
+      window.addEventListener("blur", () => {
+        this.isFocused = false;
+      });
+    }
+    /**
+     * Call this whenever a terminal event occurs (output, command execution, etc.)
+     */
+    notifyUpdate() {
+      if (!this.isFocused) {
+        this.hasUnseenUpdates = true;
+        this.updateFavicon();
+      }
+    }
+    updateFavicon() {
+      if (!this.faviconElement)
+        return;
+      const href = this.hasUnseenUpdates ? "/terminal_attn.png" : "/terminal.png";
+      this.faviconElement.href = href;
+    }
+  };
+
   // src/terminal/terminal.ts
   var TerminalController = class {
     constructor() {
@@ -2644,8 +2778,10 @@ file locks                      (-x) unlimited` };
       __publicField(this, "startTime", /* @__PURE__ */ new Date());
       __publicField(this, "envVars", /* @__PURE__ */ new Map());
       __publicField(this, "isExited", false);
+      __publicField(this, "faviconManager");
       this.filesystem = new VirtualFileSystem();
       this.outputElement = document.getElementById("terminal-output");
+      this.faviconManager = new FaviconManager();
       if (!this.outputElement) {
         throw new Error("Terminal output element not found in DOM");
       }
@@ -2721,6 +2857,13 @@ file locks                      (-x) unlimited` };
         if (this.mobileInput) {
           this.mobileInput.value = "";
         }
+      } else if (event.key === "Backspace" || event.key === "Delete") {
+        event.preventDefault();
+        this.currentInput = this.currentInput.slice(0, -1);
+        this.updateInputDisplay();
+        if (this.mobileInput) {
+          this.mobileInput.value = "";
+        }
       }
     }
     showMotd() {
@@ -2728,6 +2871,10 @@ file locks                      (-x) unlimited` };
       if (motd) {
         this.addOutput(motd.trim(), "info");
       }
+      const userAgent = navigator.userAgent;
+      const welcomeMessage = `Welcome to PK2 OS 0.0.1 (${userAgent})`;
+      this.addOutput(welcomeMessage, "info");
+      this.addOutput("", "info");
     }
     handleKeyDown(event) {
       if (this.isExited)
@@ -2744,7 +2891,7 @@ file locks                      (-x) unlimited` };
       } else if (event.key === "ArrowDown") {
         event.preventDefault();
         this.navigateHistory("down");
-      } else if (event.key === "Backspace") {
+      } else if (event.key === "Backspace" || event.key === "Delete") {
         event.preventDefault();
         this.currentInput = this.currentInput.slice(0, -1);
         this.updateInputDisplay();
@@ -2762,7 +2909,7 @@ file locks                      (-x) unlimited` };
         this.updateInputDisplay();
       }
     }
-    handleEnter() {
+    async handleEnter() {
       if (this.multilineMode) {
         if (this.currentInput.endsWith("\\")) {
           this.multilineBuffer.push(this.currentInput.slice(0, -1));
@@ -2775,7 +2922,7 @@ file locks                      (-x) unlimited` };
           this.multilineMode = false;
           this.multilineBuffer = [];
           this.currentInput = "";
-          this.executeCommand(fullCommand);
+          await this.executeCommand(fullCommand);
           this.showPrompt();
         }
       } else {
@@ -2789,7 +2936,7 @@ file locks                      (-x) unlimited` };
           if (this.currentInput.trim()) {
             this.addToHistory(this.currentInput);
           }
-          this.executeCommand(this.currentInput);
+          await this.executeCommand(this.currentInput);
           this.currentInput = "";
           this.showPrompt();
         }
@@ -2808,13 +2955,20 @@ file locks                      (-x) unlimited` };
         this.showPrompt();
       }
     }
-    executeCommand(input) {
+    async executeCommand(input) {
       if (!input.trim()) {
         return;
       }
       this.envVars.set("PWD", this.currentPath);
-      const parsed = parseCommand(input);
-      const result = executeCommand(
+      const chain = parseCommandChain(input);
+      if (chain.commands.length === 1) {
+        await this.executeSingleCommand(chain.commands[0]);
+      } else {
+        await this.executeCommandChain(chain);
+      }
+    }
+    async executeSingleCommand(parsed) {
+      const result = await executeCommand(
         parsed.command,
         parsed.args,
         parsed.flags,
@@ -2825,7 +2979,7 @@ file locks                      (-x) unlimited` };
       if (result.exit) {
         this.isExited = true;
         this.addOutput("logout", "info");
-        return;
+        return result;
       }
       if (result.error) {
         this.addOutput(result.error, "error");
@@ -2840,12 +2994,32 @@ file locks                      (-x) unlimited` };
         this.currentPath = result.newPath;
         this.envVars.set("PWD", result.newPath);
       }
+      return result;
+    }
+    async executeCommandChain(chain) {
+      for (let i = 0; i < chain.commands.length; i++) {
+        const result = await this.executeSingleCommand(chain.commands[i]);
+        if (this.isExited) {
+          return;
+        }
+        if (i < chain.operators.length) {
+          const operator = chain.operators[i];
+          const success = !result.error;
+          if (operator === "&&" && !success) {
+            return;
+          }
+          if (operator === "||" && success) {
+            return;
+          }
+        }
+      }
     }
     addOutput(text, type) {
       const line = document.createElement("div");
       line.className = `output-line output-${type}`;
       line.textContent = text;
       this.outputElement.appendChild(line);
+      this.faviconManager.notifyUpdate();
       this.outputElement.scrollTop = this.outputElement.scrollHeight;
     }
     clearOutput() {
@@ -2879,6 +3053,7 @@ file locks                      (-x) unlimited` };
       promptLine.appendChild(cursorSpan);
       this.outputElement.appendChild(promptLine);
       this.currentPromptLine = promptLine;
+      this.faviconManager.notifyUpdate();
       this.outputElement.scrollTop = this.outputElement.scrollHeight;
     }
     updatePromptText(promptText) {

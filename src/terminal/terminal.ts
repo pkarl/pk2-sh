@@ -1,6 +1,7 @@
 import { VirtualFileSystem } from "./filesystem"
-import { parseCommand } from "./parser"
-import { executeCommand, CommandContext } from "./commands"
+import { parseCommand, parseCommandChain } from "./parser"
+import { executeCommand, CommandContext, CommandResult } from "./commands"
+import { FaviconManager } from "./faviconManager"
 
 export class TerminalController {
   private filesystem: VirtualFileSystem
@@ -17,10 +18,12 @@ export class TerminalController {
   private startTime: Date = new Date();
   private envVars: Map<string, string> = new Map();
   private isExited: boolean = false;
+  private faviconManager: FaviconManager
 
   constructor() {
     this.filesystem = new VirtualFileSystem()
     this.outputElement = document.getElementById("terminal-output")!
+    this.faviconManager = new FaviconManager()
 
     if (!this.outputElement) {
       throw new Error("Terminal output element not found in DOM")
@@ -47,8 +50,8 @@ export class TerminalController {
       envVars: this.envVars,
       startTime: this.startTime,
       clearHistory: () => {
-        this.commandHistory = [];
-        this.historyIndex = 0;
+        this.commandHistory = []
+        this.historyIndex = 0
       }
     }
   }
@@ -57,7 +60,7 @@ export class TerminalController {
     this.showMotd()
     this.showPrompt()
     document.addEventListener("keydown", (e) => this.handleKeyDown(e))
-    
+
     // Set up mobile input for virtual keyboard support
     this.mobileInput = document.getElementById("mobile-input") as HTMLInputElement
     if (this.mobileInput) {
@@ -77,7 +80,7 @@ export class TerminalController {
 
     // Handle input events from mobile keyboard
     this.mobileInput.addEventListener("input", (e) => this.handleMobileInput(e as InputEvent))
-    
+
     // Handle special keys on mobile (Enter, Backspace)
     this.mobileInput.addEventListener("keydown", (e) => this.handleMobileKeyDown(e))
   }
@@ -117,6 +120,13 @@ export class TerminalController {
       if (this.mobileInput) {
         this.mobileInput.value = ""
       }
+    } else if (event.key === "Backspace" || event.key === "Delete") {
+      event.preventDefault()
+      this.currentInput = this.currentInput.slice(0, -1)
+      this.updateInputDisplay()
+      if (this.mobileInput) {
+        this.mobileInput.value = ""
+      }
     }
   }
 
@@ -125,16 +135,22 @@ export class TerminalController {
     if (motd) {
       this.addOutput(motd.trim(), "info")
     }
+
+    // Add Ubuntu-style welcome message with browser info
+    const userAgent = navigator.userAgent
+    const welcomeMessage = `Welcome to PK2 OS 0.0.1 (${userAgent})`
+    this.addOutput(welcomeMessage, "info")
+    this.addOutput("", "info")
   }
 
   handleKeyDown(event: KeyboardEvent): void {
-    if (this.isExited) return;
-    
+    if (this.isExited) return
+
     // Skip events from mobile input - they're handled by handleMobileKeyDown
     if (this.mobileInput && event.target === this.mobileInput) {
-      return;
+      return
     }
-    
+
     // Special keys
     if (event.key === "Enter") {
       event.preventDefault()
@@ -145,7 +161,7 @@ export class TerminalController {
     } else if (event.key === "ArrowDown") {
       event.preventDefault()
       this.navigateHistory("down")
-    } else if (event.key === "Backspace") {
+    } else if (event.key === "Backspace" || event.key === "Delete") {
       event.preventDefault()
       this.currentInput = this.currentInput.slice(0, -1)
       this.updateInputDisplay()
@@ -166,7 +182,7 @@ export class TerminalController {
     }
   }
 
-  private handleEnter(): void {
+  private async handleEnter(): Promise<void> {
     if (this.multilineMode) {
       if (this.currentInput.endsWith("\\")) {
         // Continue multiline
@@ -181,7 +197,7 @@ export class TerminalController {
         this.multilineMode = false
         this.multilineBuffer = []
         this.currentInput = ""
-        this.executeCommand(fullCommand)
+        await this.executeCommand(fullCommand)
         this.showPrompt()
       }
     } else {
@@ -197,7 +213,7 @@ export class TerminalController {
         if (this.currentInput.trim()) {
           this.addToHistory(this.currentInput)
         }
-        this.executeCommand(this.currentInput)
+        await this.executeCommand(this.currentInput)
         this.currentInput = ""
         this.showPrompt()
       }
@@ -218,15 +234,24 @@ export class TerminalController {
     }
   }
 
-  private executeCommand(input: string): void {
+  private async executeCommand(input: string): Promise<void> {
     if (!input.trim()) {
       return
     }
 
     this.envVars.set("PWD", this.currentPath)
 
-    const parsed = parseCommand(input)
-    const result = executeCommand(
+    const chain = parseCommandChain(input)
+
+    if (chain.commands.length === 1) {
+      await this.executeSingleCommand(chain.commands[0])
+    } else {
+      await this.executeCommandChain(chain)
+    }
+  }
+
+  private async executeSingleCommand(parsed: any): Promise<CommandResult> {
+    const result = await executeCommand(
       parsed.command,
       parsed.args,
       parsed.flags,
@@ -238,7 +263,7 @@ export class TerminalController {
     if (result.exit) {
       this.isExited = true
       this.addOutput("logout", "info")
-      return
+      return result
     }
 
     if (result.error) {
@@ -255,6 +280,33 @@ export class TerminalController {
       this.currentPath = result.newPath
       this.envVars.set("PWD", result.newPath)
     }
+
+    return result
+  }
+
+  private async executeCommandChain(chain: any): Promise<void> {
+    for (let i = 0; i < chain.commands.length; i++) {
+      const result = await this.executeSingleCommand(chain.commands[i])
+
+      // Stop if exit was called
+      if (this.isExited) {
+        return
+      }
+
+      // Check if we should continue to next command
+      if (i < chain.operators.length) {
+        const operator = chain.operators[i]
+        const success = !result.error
+
+        if (operator === "&&" && !success) {
+          return // Stop on AND failure
+        }
+        if (operator === "||" && success) {
+          return // Stop on OR success
+        }
+        // ";" always continues
+      }
+    }
   }
 
   private addOutput(text: string, type: "info" | "error" | "success"): void {
@@ -262,6 +314,9 @@ export class TerminalController {
     line.className = `output-line output-${type}`
     line.textContent = text
     this.outputElement.appendChild(line)
+
+    // Notify favicon manager of this update
+    this.faviconManager.notifyUpdate()
 
     // Auto-scroll to bottom
     this.outputElement.scrollTop = this.outputElement.scrollHeight
@@ -272,8 +327,8 @@ export class TerminalController {
   }
 
   private showPrompt(): void {
-    if (this.isExited) return;
-    
+    if (this.isExited) return
+
     this.currentInput = ""
     this.historyIndex = this.commandHistory.length
 
@@ -304,6 +359,9 @@ export class TerminalController {
     promptLine.appendChild(cursorSpan)
     this.outputElement.appendChild(promptLine)
     this.currentPromptLine = promptLine
+
+    // Notify favicon manager of this update
+    this.faviconManager.notifyUpdate()
 
     // Auto-scroll to bottom
     this.outputElement.scrollTop = this.outputElement.scrollHeight

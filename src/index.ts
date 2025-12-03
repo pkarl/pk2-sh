@@ -1,14 +1,15 @@
-import { Hono } from "hono";
-import { html } from "hono/html";
+import { Hono } from "hono"
+import { html } from "hono/html"
 
-const app = new Hono<{ Bindings: CloudflareBindings }>();
+const app = new Hono<{ Bindings: CloudflareBindings }>()
 
 const terminalHTML = html`<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Terminal Interface</title>
+    <title>visitor@browser</title>
+    <link rel="icon" type="image/png" href="/terminal.png" />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
@@ -26,10 +27,10 @@ const terminalHTML = html`<!DOCTYPE html>
     </div>
     <script defer src="/terminal.js"></script>
   </body>
-</html>`;
+</html>`
 
 app.get("/", (c) => {
-  return c.html(terminalHTML);
-});
+  return c.html(terminalHTML)
+})
 
-export default app;
+export default app

@@ -3,7 +3,9 @@
 	"type": "module",
 	"scripts": {
 		"build:client": "esbuild src/client/terminal-client.ts --bundle --outfile=public/terminal.js --target=es2020",
+		"build:client:watch": "esbuild src/client/terminal-client.ts --bundle --outfile=public/terminal.js --target=es2020 --watch",
 		"dev": "npm run build:client && wrangler dev",
+		"dev:watch": "npm run build:client:watch & wrangler dev",
 		"deploy": "npm run build:client && wrangler deploy --minify",
 		"cf-typegen": "wrangler types --env-interface CloudflareBindings"
 	},

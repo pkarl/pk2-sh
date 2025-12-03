@@ -56,3 +56,4 @@ tsconfig.json       # TypeScript configuration (Hono JSX support)
 - Hono routing is request/response based (similar to Express but optimized for Workers)
 - Worker runtime has no file system access—use KV storage for persistence
 - Environment variables go in `wrangler.jsonc` under `vars` or use `wrangler secret` for sensitive data
+- list steps to verify instead of verifying

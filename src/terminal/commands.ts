@@ -13,7 +13,7 @@ export type CommandHandler = (
   fs: VirtualFileSystem,
   currentPath: string,
   context?: CommandContext
-) => CommandResult;
+) => CommandResult | Promise<CommandResult>;
 
 export interface CommandContext {
   commandHistory: string[];
@@ -1110,7 +1110,18 @@ Change: ${formatFullDate(node.modified)}
   },
 
   sleep: (args, flags, fs, currentPath) => {
-    return { output: "" };
+    const seconds = parseFloat(args[0] || "0");
+    if (isNaN(seconds) || seconds < 0) {
+      return { error: "sleep: invalid time interval" };
+    }
+    if (seconds === 0) {
+      return { output: "" };
+    }
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        resolve({ output: "" });
+      }, seconds * 1000);
+    });
   },
 
   tty: (args, flags, fs, currentPath) => {
@@ -2015,7 +2026,7 @@ export function executeCommand(
   fs: VirtualFileSystem,
   currentPath: string,
   context?: CommandContext
-): CommandResult {
+): CommandResult | Promise<CommandResult> {
   const handler = commands[command];
 
   if (!handler) {
