@@ -33,6 +33,13 @@ export class VirtualFileSystem {
 
     // User directories
     this.createNestedDirectory("/home/visitor");
+    this.createNestedDirectory("/home/pk2");
+    this.createNestedDirectory("/home/pk2/.ssh");
+    this.createNestedDirectory("/home/pk2/docs");
+    this.createNestedDirectory("/home/pk2/projects");
+    this.createNestedDirectory("/home/pk2/mentoring");
+    this.createNestedDirectory("/home/pk2/lab");
+    this.createNestedDirectory("/home/pk2/personal");
     this.createNestedDirectory("/root");
 
     // Variable data
@@ -96,6 +103,7 @@ syslog:x:104:111::/home/syslog:/usr/sbin/nologin
 _apt:x:105:65534::/nonexistent:/usr/sbin/nologin
 sshd:x:106:65534::/run/sshd:/usr/sbin/nologin
 visitor:x:1000:1000:Visitor,,,:/home/visitor:/bin/bash
+pk2:x:1001:1001:Pete Karl II,,,:/home/pk2:/bin/bash
 `);
 
     // /etc/group
@@ -165,20 +173,10 @@ DISTRIB_DESCRIPTION="Ubuntu 22.04.3 LTS"
 
     // /etc/motd (Message of the Day)
     this.createFile("/etc/motd", `
-  Welcome to Ubuntu 22.04.3 LTS (GNU/Linux 5.15.0-generic x86_64)
+  +----------------+
+  |     pk2.sh     |
+  +----------------+
 
-  * Documentation:  https://help.ubuntu.com
-  * Management:     https://landscape.canonical.com
-  * Support:        https://ubuntu.com/advantage
-
-  System information as of login time:
-
-    System load:  0.0               Processes:             95
-    Usage of /:   26.0% of 50GB     Users logged in:       1
-    Memory usage: 31%               IPv4 address for eth0: 192.168.1.100
-    Swap usage:   0%
-
-  This is a simulated Ubuntu Server terminal emulator.
   Type 'help' for available commands.
 
 `);
@@ -429,6 +427,182 @@ Try these commands to get started:
   - help            Show all available commands
 
 Have fun exploring!
+`);
+
+    // Initialize pk2 user files
+    this.initializePk2Files();
+  }
+
+  private initializePk2Files(): void {
+    // /home/pk2/README.txt
+    this.createFile("/home/pk2/README.txt", `You found /home/pk2.
+
+This is the home directory for Pete Karl II.
+Inside are notes on past projects, mentoring, and a few personal favorites.
+
+Use 'ls' to explore and 'cat' to read files.
+`);
+
+    // /home/pk2/.bashrc
+    this.createFile("/home/pk2/.bashrc", `# ~/.bashrc for pk2
+
+export EDITOR=vim
+export VISUAL=vim
+
+alias ll='ls -alF'
+alias la='ls -A'
+alias gs='git status'
+alias gd='git diff'
+
+PS1='pk2@\\h:\\w\\$ '
+`);
+
+    // /home/pk2/.profile
+    this.createFile("/home/pk2/.profile", `# ~/.profile for pk2
+
+if [ -n "$BASH_VERSION" ]; then
+    if [ -f "$HOME/.bashrc" ]; then
+        . "$HOME/.bashrc"
+    fi
+fi
+
+if [ -d "$HOME/bin" ] ; then
+    PATH="$HOME/bin:$PATH"
+fi
+`);
+
+    // /home/pk2/.ssh/authorized_keys
+    this.createFile("/home/pk2/.ssh/authorized_keys", `# SSH keys (simulated)
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAISimulatedKey pk2@localhost
+`);
+
+    // /home/pk2/docs/resume.txt
+    this.createFile("/home/pk2/docs/resume.txt", `PETE KARL II
+Engineering Leadership
+Atlanta, GA
+
+EXPERIENCE
+
+Avnir (2023-Present)
+  Startup CTO - AI copilot platform
+
+Thrive Global (2021-2023)
+  VP Engineering
+
+SilverCloud Health (2020-2021)
+  Head of Engineering
+
+WEVO (2019-2020)
+  Head of Product & Engineering
+
+Drift (2016-2019)
+  Senior Lead, Engineering
+`);
+
+    // /home/pk2/docs/stack.txt
+    this.createFile("/home/pk2/docs/stack.txt", `TECH STACK NOTES
+
+Data: BigQuery, dbt, vector databases
+Cloud: GCP, Cloudflare
+Frontend: React, React Native, TypeScript
+Integrations: MS Teams, EHR systems (Epic, Cerner)
+Compliance: SOC2, HiTRUST, HIPAA
+`);
+
+    // /home/pk2/projects/notes.txt
+    this.createFile("/home/pk2/projects/notes.txt", `PROJECT NOTES
+
+Avnir
+  AI copilot for professional services
+  Contact intelligence pipeline using BigQuery + dbt
+
+Thrive Global
+  Wellbeing platform (Arianna Huffington's company)
+  React Native mobile, MS Teams integration
+
+SilverCloud Health
+  Digital therapeutics platform
+  EHR integrations with Epic and Cerner
+  Acquired by Amwell
+
+Drift
+  Conversational marketing platform
+  Bot automation and demo booking
+
+WEVO
+  AI-powered UX analytics
+`);
+
+    // /home/pk2/mentoring/playbook.txt
+    this.createFile("/home/pk2/mentoring/playbook.txt", `MENTORING NOTES
+
+First meeting:
+  Ask what success looks like for them
+  Understand current challenges
+  Find out what they've already tried
+  Listen more than talk
+
+Ongoing:
+  Focus on customer outcomes
+  Challenge assumptions gently
+  Help see the bigger picture
+
+Programs:
+  HackBeanpot (2019-present)
+  Startup Institute (2013-present)
+  Code with Me (2013-present)
+`);
+
+    // /home/pk2/lab/ideas.txt
+    this.createFile("/home/pk2/lab/ideas.txt", `IDEAS (BRAIN DUMP)
+
+Copilot for discovery calls
+Auto-generate follow-ups from call transcripts
+Codebase Q&A for onboarding
+Meeting summarizer that knows your priorities
+
+Principles:
+  Augment humans, don't replace them
+  Start with the workflow, not the model
+  Privacy is a feature
+`);
+
+    // /home/pk2/personal/about.txt
+    this.createFile("/home/pk2/personal/about.txt", `ABOUT
+
+Name: Pete Karl II
+Location: Atlanta, Georgia
+Education: Rochester Institute of Technology
+
+I work on engineering leadership and AI products.
+I like mentoring and teaching.
+
+Contact: pete.karl@gmail.com
+LinkedIn: linkedin.com/in/pkarl2
+`);
+
+    // /home/pk2/personal/reading.txt
+    this.createFile("/home/pk2/personal/reading.txt", `READING LIST
+
+Books:
+  The Manager's Path - Camille Fournier
+  An Elegant Puzzle - Will Larson
+  Accelerate - Forsgren, Humble, Kim
+  The Mom Test - Rob Fitzpatrick
+
+Blogs:
+  Will Larson's Irrational Exuberance
+  Lenny's Newsletter
+  First Round Review
+`);
+
+    // /home/pk2/personal/cities.txt
+    this.createFile("/home/pk2/personal/cities.txt", `CITIES
+
+Lived in:
+  Rochester, NY
+  Boston, MA
+  Atlanta, GA (current)
 `);
   }
 
