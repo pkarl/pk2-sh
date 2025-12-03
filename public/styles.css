@@ -145,3 +145,19 @@ body {
   background-color: #373b41;
   color: #c5c8c6;
 }
+
+/* Hidden mobile input for triggering virtual keyboard */
+#mobile-input {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: transparent;
+  caret-color: transparent;
+  font-size: 16px; /* Prevents iOS zoom on focus */
+}

@@ -2485,6 +2485,7 @@ file locks                      (-x) unlimited` };
       __publicField(this, "multilineMode", false);
       __publicField(this, "multilineBuffer", []);
       __publicField(this, "outputElement");
+      __publicField(this, "mobileInput", null);
       __publicField(this, "currentPromptLine", null);
       __publicField(this, "maxHistory", 100);
       __publicField(this, "startTime", /* @__PURE__ */ new Date());
@@ -2523,6 +2524,51 @@ file locks                      (-x) unlimited` };
       this.showMotd();
       this.showPrompt();
       document.addEventListener("keydown", (e) => this.handleKeyDown(e));
+      this.mobileInput = document.getElementById("mobile-input");
+      if (this.mobileInput) {
+        this.setupMobileInput();
+      }
+    }
+    setupMobileInput() {
+      if (!this.mobileInput)
+        return;
+      const container = document.getElementById("terminal-container");
+      if (container) {
+        container.addEventListener("click", () => this.focusMobileInput());
+        container.addEventListener("touchstart", () => this.focusMobileInput());
+      }
+      this.mobileInput.addEventListener("input", (e) => this.handleMobileInput(e));
+      this.mobileInput.addEventListener("keydown", (e) => this.handleMobileKeyDown(e));
+    }
+    focusMobileInput() {
+      if (this.mobileInput && !this.isExited) {
+        this.mobileInput.focus();
+      }
+    }
+    handleMobileInput(event) {
+      if (this.isExited || !this.mobileInput)
+        return;
+      const inputType = event.inputType;
+      const data = event.data;
+      if (inputType === "insertText" && data) {
+        this.currentInput += data;
+        this.updateInputDisplay();
+      } else if (inputType === "deleteContentBackward") {
+        this.currentInput = this.currentInput.slice(0, -1);
+        this.updateInputDisplay();
+      }
+      this.mobileInput.value = "";
+    }
+    handleMobileKeyDown(event) {
+      if (this.isExited)
+        return;
+      if (event.key === "Enter") {
+        event.preventDefault();
+        this.handleEnter();
+        if (this.mobileInput) {
+          this.mobileInput.value = "";
+        }
+      }
     }
     showMotd() {
       const motd = this.filesystem.readFile("/etc/motd");
@@ -2533,6 +2579,9 @@ file locks                      (-x) unlimited` };
     handleKeyDown(event) {
       if (this.isExited)
         return;
+      if (this.mobileInput && event.target === this.mobileInput) {
+        return;
+      }
       if (event.key === "Enter") {
         event.preventDefault();
         this.handleEnter();
