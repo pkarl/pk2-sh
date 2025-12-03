@@ -6,9 +6,19 @@ export interface VFSNode {
   content?: string;
   children?: Map<string, VFSNode>;
   permissions: string;
+  owner: string;
+  group: string;
   created: Date;
   modified: Date;
 }
+
+export interface PermissionContext {
+  user: string;
+  uid: number;
+  groups: string[];
+}
+
+export type FileOperation = "read" | "write" | "execute";
 
 export class VirtualFileSystem {
   private root: VFSNode;
